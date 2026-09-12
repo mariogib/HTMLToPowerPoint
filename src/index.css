@@ -22,16 +22,60 @@ body {
 
 #root {
   min-height: 100vh;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.site-chrome {
+  flex: none;
+  z-index: 20;
 }
 
 .site-nav {
-  height: 48px;
+  min-height: 48px;
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  justify-content: space-between;
+  gap: 1rem;
   padding: 0 1rem;
   background: #0f172a;
   box-sizing: border-box;
+}
+
+.site-nav__brand {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  text-decoration: none;
+  min-width: 0;
+}
+
+.site-nav__title {
+  color: #ffffff;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.site-nav__badge {
+  flex: none;
+  color: #fde68a;
+  background: rgba(253, 230, 138, 0.12);
+  border: 1px solid rgba(253, 230, 138, 0.28);
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.site-nav__links {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
 }
 
 .site-nav__link {
@@ -51,4 +95,33 @@ body {
 .site-nav__link--active {
   color: #ffffff;
   background: #4f46e5;
+}
+
+.site-banner {
+  margin: 0;
+  padding: 0.55rem 1rem 0.65rem;
+  background: #fff7ed;
+  border-bottom: 1px solid #fdba74;
+  color: #7c2d12;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.site-banner strong {
+  color: #9a3412;
+}
+
+@media (max-width: 720px) {
+  .site-nav {
+    flex-wrap: wrap;
+    padding: 0.45rem 0.75rem;
+  }
+
+  .site-nav__links {
+    width: 100%;
+  }
+
+  .site-banner {
+    padding: 0.5rem 0.75rem 0.6rem;
+  }
 }
