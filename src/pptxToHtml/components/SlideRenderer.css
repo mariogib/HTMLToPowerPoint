@@ -1,0 +1,109 @@
+.slide-renderer {
+  margin-top: 20px;
+  padding: 20px;
+  background-color: white;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+}
+
+.slide-navigation {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding: 10px;
+  background-color: #f8f9fa;
+  border-radius: 6px;
+}
+
+.nav-button {
+  background-color: #007acc;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9em;
+  transition: background-color 0.3s ease;
+}
+
+.nav-button:hover:not(:disabled) {
+  background-color: #005a9e;
+}
+
+.nav-button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+.slide-counter {
+  font-weight: bold;
+  color: #333;
+}
+
+.slide-container {
+  margin: 20px 0;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  overflow: auto;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  background-color: white;
+}
+
+.slide-content {
+  min-height: 400px;
+  position: relative;
+}
+
+.slide-thumbnails {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 20px;
+  padding: 15px;
+  background-color: #f8f9fa;
+  border-radius: 6px;
+}
+
+.thumbnail {
+  width: 40px;
+  height: 30px;
+  background-color: white;
+  border: 2px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8em;
+  font-weight: bold;
+  color: #666;
+  transition: all 0.3s ease;
+}
+
+.thumbnail:hover {
+  border-color: #007acc;
+  color: #007acc;
+}
+
+.thumbnail.active {
+  border-color: #007acc;
+  background-color: #007acc;
+  color: white;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .slide-navigation {
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .slide-container {
+    margin: 10px 0;
+  }
+  
+  .slide-thumbnails {
+    justify-content: center;
+  }
+}

@@ -1,0 +1,87 @@
+.folder-selector {
+  margin: 20px 0;
+  padding: 20px;
+  background-color: white;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+}
+
+.folder-selector-label h4 {
+  margin: 0 0 5px 0;
+  color: #333;
+}
+
+.folder-selector-label p {
+  margin: 0 0 15px 0;
+  color: #666;
+  font-size: 0.9em;
+}
+
+.download-info {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.info-box {
+  display: flex;
+  gap: 12px;
+  padding: 15px;
+  background-color: #e3f2fd;
+  border: 1px solid #bbdefb;
+  border-radius: 6px;
+  align-items: flex-start;
+}
+
+.info-icon {
+  font-size: 1.2em;
+  margin-top: 2px;
+}
+
+.info-content {
+  flex: 1;
+}
+
+.info-content p {
+  margin: 0 0 8px 0;
+  font-size: 0.9em;
+  line-height: 1.4;
+}
+
+.info-content p:last-child {
+  margin-bottom: 0;
+}
+
+.acknowledge-button {
+  background-color: #28a745;
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1em;
+  font-weight: 500;
+  transition: background-color 0.3s ease;
+  width: fit-content;
+  align-self: flex-start;
+}
+
+.acknowledge-button:hover {
+  background-color: #218838;
+}
+
+.acknowledge-button:active {
+  transform: translateY(1px);
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .info-box {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .info-icon {
+    align-self: flex-start;
+  }
+}

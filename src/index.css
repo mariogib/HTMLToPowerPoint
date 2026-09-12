@@ -23,3 +23,32 @@ body {
 #root {
   min-height: 100vh;
 }
+
+.site-nav {
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0 1rem;
+  background: #0f172a;
+  box-sizing: border-box;
+}
+
+.site-nav__link {
+  color: #cbd5e1;
+  text-decoration: none;
+  font-size: 0.88rem;
+  font-weight: 600;
+  padding: 0.4rem 0.75rem;
+  border-radius: 8px;
+}
+
+.site-nav__link:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.site-nav__link--active {
+  color: #ffffff;
+  background: #4f46e5;
+}
