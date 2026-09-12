@@ -292,10 +292,16 @@ textarea {
 
 .builder-palette {
   flex-shrink: 0;
+  align-self: stretch;
   width: 140px;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  min-height: 0;
+  max-height: 100%;
+  overflow-x: hidden;
+  overflow-y: scroll;
+  padding-right: 0.15rem;
 }
 
 .builder-action-btn {
@@ -365,6 +371,15 @@ textarea {
   user-select: none;
 }
 
+.slide-html-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+}
+
 .canvas-placeholder {
   position: absolute;
   top: 50%;
@@ -386,6 +401,46 @@ textarea {
   overflow: visible;
   transition: border-color 0.2s;
   touch-action: none;
+}
+
+.canvas-element--media {
+  background: transparent;
+}
+
+.canvas-element--background {
+  z-index: 0;
+}
+
+.canvas-element--background .element-chrome,
+.canvas-element--background .resize-handle {
+  opacity: 0;
+}
+
+.canvas-element--background:hover .element-chrome,
+.canvas-element--background.selected .element-chrome {
+  opacity: 1;
+}
+
+.canvas-element--media .element-body {
+  padding-top: 0;
+}
+
+.canvas-html-host,
+.canvas-html-host > * {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.canvas-html-host .imported-slide-bg,
+.canvas-html-host .smartart,
+.canvas-html-host .slide-3d-model,
+.canvas-html-host model-viewer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
 }
 
 .element-chrome {

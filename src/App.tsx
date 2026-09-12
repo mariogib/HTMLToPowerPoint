@@ -3,10 +3,17 @@ import { CanvasContextMenu } from './CanvasContextMenu'
 import { PropertiesPanel } from './PropertiesPanel'
 import { SlideRail } from './SlideRail'
 import type { CanvasElement, DeckSlide } from './lib/canvasTypes'
-import { htmlToPptx, measureHtmlBlocks } from './lib/htmlToPptx'
+import { htmlToPptx, measureHtmlBlocks, type MeasuredBlock } from './lib/htmlToPptx'
 import { bulletPreview, getBulletStyle } from './lib/bulletStyles'
 import type { BulletStyleId } from './lib/bulletStyles'
 import { createDeckSlide, emptySlideHtml, moveById, reorderById } from './lib/deck'
+import {
+  SHARED_SLIDE_CSS,
+  ensureModelViewerLoaded,
+  isImportedSlideHtml,
+  parseImportedHtml,
+  type ImportedHtmlPage,
+} from './lib/importHtml'
 import { captureDeck, cloneCanvasElement, cloneDeck, type DeckSnapshot } from './lib/deckSnapshot'
 import { containRect, resizeProportional } from './lib/imageFit'
 import { defaultColor, defaultFontSize, withAutoSize } from './lib/measureElement'
@@ -46,8 +53,10 @@ const downloadBlob = (blob: Blob, filename: string) => {
   const link = document.createElement('a')
   link.href = url
   link.download = filename
+  document.body.appendChild(link)
   link.click()
-  URL.revokeObjectURL(url)
+  link.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
 
 const saveTextToChosenFile = async (contents: string, defaultName: string) => {
@@ -210,6 +219,8 @@ const buildHtmlFromCanvas = (elements: CanvasElement[], background: string) => {
           return `<p style="${style}">${toHtmlMultiline(el.content)}</p>`
         case 'image':
           return `<img src="${el.content}" style="${style}; object-fit: contain;" alt="Image" />`
+        case 'html':
+          return `<div class="slide-html-object" style="${style}">${el.content}</div>`
         case 'list': {
           const items = el.content.split('\n')
           const bullet = getBulletStyle(el.bulletStyle)
@@ -223,6 +234,12 @@ const buildHtmlFromCanvas = (elements: CanvasElement[], background: string) => {
       }
     })
     .join('\n')
+
+  if (elements.some((el) => el.type === 'html')) {
+    return `<style>${SHARED_SLIDE_CSS}</style><div class="imported-slide" style="background-color:${background};position:absolute;inset:0;width:100%;height:100%;overflow:hidden;box-sizing:border-box">
+${nodes}
+</div>`
+  }
 
   return `<div style="font-family: Arial, sans-serif; width: 100%; height: 100%; box-sizing: border-box; background: ${background}; position: relative;">
 ${nodes}
@@ -629,38 +646,102 @@ function App() {
     e.stopPropagation()
   }
 
-  const parseHtmlToCanvas = async (sourceHtml = html) => {
-    const blocks = await measureHtmlBlocks(sourceHtml, slideWidth, slideHeight)
-    pushHistory()
-    setCanvasElements(
-      blocks.map((block, index) => {
-        const fitted =
-          block.kind === 'image' && block.aspectRatio
-            ? containRect(block.x, block.y, block.width, block.height, block.aspectRatio, 1)
-            : { x: block.x, y: block.y, width: block.width, height: block.height }
+  const blocksToCanvasElements = (blocks: MeasuredBlock[], idPrefix: string) =>
+    blocks.map((block, index) => {
+      const fitted =
+        block.kind === 'image' && block.aspectRatio && !block.cover
+          ? containRect(block.x, block.y, block.width, block.height, block.aspectRatio, 1)
+          : { x: block.x, y: block.y, width: block.width, height: block.height }
 
-        return withAutoSize({
-          id: `parsed-${index}`,
-          type: block.kind,
-          content: block.content,
-          x: fitted.x,
-          y: fitted.y,
-          width: fitted.width,
-          height: fitted.height,
-          autoSize: block.kind !== 'image',
-          aspectRatio: block.aspectRatio,
-          fontSize: block.styles.fontSize
-            ? Math.round(block.styles.fontSize / 0.75)
-            : defaultFontSize(block.kind),
-          fontFamily: block.styles.fontFace ?? 'Arial',
-          color: block.styles.color ? `#${block.styles.color}` : defaultColor(block.kind),
-          bold: block.styles.bold || block.kind === 'heading',
-          italic: block.styles.italic,
-          align: block.styles.align,
-          bulletStyle: block.kind === 'list' ? block.bulletStyle : undefined,
-        })
+      return withAutoSize({
+        id: `${idPrefix}-${index}`,
+        type: block.kind,
+        content: block.content,
+        x: fitted.x,
+        y: fitted.y,
+        width: fitted.width,
+        height: fitted.height,
+        autoSize: block.kind !== 'image' && block.kind !== 'html' && !block.preserveBox,
+        aspectRatio: block.aspectRatio,
+        fontSize: block.styles.fontSize
+          ? Math.round(block.styles.fontSize / 0.75)
+          : defaultFontSize(block.kind === 'html' ? 'text' : block.kind),
+        fontFamily: block.styles.fontFace ?? 'Arial',
+        color: block.styles.color ? `#${block.styles.color}` : defaultColor(block.kind === 'html' ? 'text' : block.kind),
+        bold: block.styles.bold ?? block.kind === 'heading',
+        italic: block.styles.italic,
+        align: block.styles.align,
+        bulletStyle: block.kind === 'list' ? block.bulletStyle : undefined,
       })
+    })
+
+  const measureImportedPage = async (page: ImportedHtmlPage, idPrefix: string) => {
+    const blocks = await measureHtmlBlocks(page.html, slideWidth, slideHeight)
+    return blocksToCanvasElements(blocks, idPrefix)
+  }
+
+  const importHtmlDocument = async (
+    sourceHtml: string,
+    options: { replaceDeck?: boolean } = {}
+  ) => {
+    const imported = parseImportedHtml(sourceHtml)
+    const replaceDeck = options.replaceDeck || imported.pages.length > 1
+
+    pushHistory()
+
+    const keepOriginalLayout =
+      Boolean(options.replaceDeck) &&
+      imported.pages.some((page) => isImportedSlideHtml(page.html))
+
+    if (
+      keepOriginalLayout ||
+      /model-viewer|slide-3d-model/.test(sourceHtml) ||
+      imported.pages.some((page) => /model-viewer|slide-3d-model/.test(page.html))
+    ) {
+      await ensureModelViewerLoaded()
+    }
+
+    if (!replaceDeck) {
+      const page = imported.pages[0] ?? { html: sourceHtml }
+      setHtml(page.html)
+      setCanvasElements(
+        keepOriginalLayout ? [] : await measureImportedPage(page, 'parsed')
+      )
+      if (page.backgroundColor) setBackground(page.backgroundColor)
+      return
+    }
+
+    const nextSlides: DeckSlide[] = []
+    for (const [index, page] of imported.pages.entries()) {
+      nextSlides.push(
+        createDeckSlide(
+          page.html,
+          keepOriginalLayout ? [] : await measureImportedPage(page, `parsed-${index}`)
+        )
+      )
+    }
+
+    const first = nextSlides[0] ?? createDeckSlide(emptySlideHtml(background))
+    if (nextSlides.length === 0) {
+      nextSlides.push(first)
+    }
+
+    setSlides(nextSlides)
+    setActiveSlideId(first.id)
+    setSelectedId(null)
+    setPropertiesId(null)
+    if (!keepOriginalLayout && imported.pages[0]?.backgroundColor) {
+      setBackground(imported.pages[0].backgroundColor)
+    }
+    setStatus(
+      `Imported ${nextSlides.length} slide${nextSlides.length === 1 ? '' : 's'}${
+        imported.title ? ` from ${imported.title}` : ''
+      }.`
     )
+  }
+
+  const parseHtmlToCanvas = async (sourceHtml = html) => {
+    await importHtmlDocument(sourceHtml)
   }
 
   const saveCanvasToPreview = () => {
@@ -693,8 +774,11 @@ function App() {
     const reader = new FileReader()
     reader.onload = async () => {
       const text = typeof reader.result === 'string' ? reader.result : ''
-      setHtml(text)
-      await parseHtmlToCanvas(text)
+      const baseName = file.name.replace(/\.(html|htm)$/i, '')
+      if (baseName) {
+        setFilename(`${baseName}.pptx`)
+      }
+      await importHtmlDocument(text, { replaceDeck: true })
     }
     reader.readAsText(file)
   }
@@ -1130,7 +1214,13 @@ function App() {
                   }
                 }}
               >
-                {canvasElements.length === 0 && (
+                {canvasElements.some((element) => element.type === 'html') && (
+                  <style>{SHARED_SLIDE_CSS}</style>
+                )}
+                {canvasElements.length === 0 && isImportedSlideHtml(html) && (
+                  <div className="slide-html-layer" dangerouslySetInnerHTML={{ __html: html }} />
+                )}
+                {canvasElements.length === 0 && !isImportedSlideHtml(html) && (
                   <div className="canvas-placeholder">
                     Drag elements here to build your slide
                   </div>
@@ -1138,7 +1228,7 @@ function App() {
                 {canvasElements.map((element) => (
                   <div
                     key={element.id}
-                    className={`canvas-element${draggedElement === element.id ? ' dragging' : ''}${selectedId === element.id ? ' selected' : ''}`}
+                    className={`canvas-element${element.type === 'html' || element.type === 'image' ? ' canvas-element--media' : ''}${element.type === 'html' && /imported-slide-bg|is-background/.test(element.content) ? ' canvas-element--background' : ''}${draggedElement === element.id ? ' dragging' : ''}${selectedId === element.id ? ' selected' : ''}`}
                     style={{
                       left: `${element.x}px`,
                       top: `${element.y}px`,
@@ -1190,7 +1280,12 @@ function App() {
                     <div className="resize-handle resize-handle-se" onMouseDown={(e) => handleResizeMouseDown(e, element, 'se')} />
                     <div className="resize-handle resize-handle-sw" onMouseDown={(e) => handleResizeMouseDown(e, element, 'sw')} />
                     <div className="element-body">
-                      {element.type === 'image' ? (
+                      {element.type === 'html' ? (
+                        <div
+                          className="canvas-html-host"
+                          dangerouslySetInnerHTML={{ __html: element.content }}
+                        />
+                      ) : element.type === 'image' ? (
                         <img
                           src={element.content}
                           alt="Canvas element"

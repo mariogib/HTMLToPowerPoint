@@ -36,7 +36,9 @@ export const PropertiesPanel = ({
         ? 'Text box properties'
         : element.type === 'list'
           ? 'List properties'
-          : 'Image properties'
+          : element.type === 'html'
+            ? 'Object properties'
+            : 'Image properties'
 
   return (
     <div

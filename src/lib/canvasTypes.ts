@@ -2,7 +2,7 @@ import type { BulletStyleId } from './bulletStyles'
 
 export type CanvasElement = {
   id: string
-  type: 'text' | 'heading' | 'image' | 'list'
+  type: 'text' | 'heading' | 'image' | 'list' | 'html'
   content: string
   x: number
   y: number

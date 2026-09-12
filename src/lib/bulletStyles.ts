@@ -47,6 +47,9 @@ export const detectBulletStyle = (element: HTMLElement): BulletStyleId => {
   if (isBulletStyleId(data)) {
     return data
   }
+  if (element.querySelector('.slide-text-bullet')) {
+    return 'disc'
+  }
   if (element.tagName.toLowerCase() === 'ol') {
     return 'number'
   }

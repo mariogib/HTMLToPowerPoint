@@ -1,7 +1,10 @@
 import PptxGenJS from 'pptxgenjs'
 import { detectBulletStyle, pptxBulletOption, type BulletStyleId } from './bulletStyles'
 import { containRect, loadImageNaturalSize } from './imageFit'
+import { isImportedSlideHtml, splitImportedHtml } from './importHtml'
 import { pxToInches, slideSizePx } from './slideLayout'
+import { embedModelsInPptx, prepareExportableModels, type ExportableSlideModel } from './slide3dExport'
+import { SNAPSHOT_HIDE_3D, snapshotHtmlSlide } from './slideSnapshot'
 
 export type HtmlToPptxOptions = {
   slideWidthIn?: number
@@ -39,7 +42,7 @@ type TextStyle = {
 }
 
 export type MeasuredBlock = {
-  kind: 'heading' | 'text' | 'image' | 'list'
+  kind: 'heading' | 'text' | 'image' | 'list' | 'html'
   content: string
   x: number
   y: number
@@ -50,6 +53,10 @@ export type MeasuredBlock = {
   bulletIndentPt?: number
   bulletStyle?: BulletStyleId
   aspectRatio?: number
+  cover?: boolean
+  preserveBox?: boolean
+  isModel3d?: boolean
+  isBackground?: boolean
 }
 
 const parseColor = (color: string): string => {
@@ -88,11 +95,61 @@ const getComputedStyles = (element: HTMLElement): TextStyle => {
   }
 }
 
-const blockKind = (tagName: string): MeasuredBlock['kind'] => {
-  if (tagName === 'img') return 'image'
+const isSlideTextShape = (element: HTMLElement) => element.classList.contains('slide-text-shape')
+
+const isVisualObject = (element: HTMLElement) =>
+  element.classList.contains('smartart') ||
+  element.classList.contains('imported-slide-bg') ||
+  element.classList.contains('slide-3d-model') ||
+  element.tagName.toLowerCase() === 'model-viewer' ||
+  element.tagName.toLowerCase() === 'svg'
+
+const serializeVisualHtml = (element: HTMLElement) => {
+  const clone = element.cloneNode(true) as HTMLElement
+  clone.style.position = 'absolute'
+  clone.style.left = '0px'
+  clone.style.top = '0px'
+  clone.style.right = 'auto'
+  clone.style.bottom = 'auto'
+  clone.style.width = '100%'
+  clone.style.height = '100%'
+  clone.style.margin = '0'
+  clone.style.maxWidth = 'none'
+  clone.style.maxHeight = 'none'
+  return clone.outerHTML
+}
+
+const blockKind = (element: HTMLElement): MeasuredBlock['kind'] => {
+  const tagName = element.tagName.toLowerCase()
+  if (isVisualObject(element) && tagName !== 'img') {
+    return 'html'
+  }
+  if (tagName === 'img') {
+    return 'image'
+  }
   if (tagName === 'ul' || tagName === 'ol') return 'list'
-  if (/^h[1-6]$/.test(tagName)) return 'heading'
+  if (element.classList.contains('slide-text-title') || /^h[1-6]$/.test(tagName)) return 'heading'
+  if (element.querySelector('.slide-text-bullet')) return 'list'
   return 'text'
+}
+
+const normalizeText = (value: string) =>
+  value.replace(/\u00a0/g, ' ').replace(/\r\n/g, '\n').replace(/^\n+|\n+$/g, '')
+
+const slideShapeContent = (element: HTMLElement) => {
+  const paragraphs = Array.from(element.querySelectorAll('.slide-text-p')) as HTMLElement[]
+  if (paragraphs.length === 0) {
+    return normalizeText(element.innerText)
+  }
+
+  return paragraphs
+    .map((paragraph) => {
+      const clone = paragraph.cloneNode(true) as HTMLElement
+      clone.querySelectorAll('.slide-text-bullet').forEach((bullet) => bullet.remove())
+      return clone.innerText.replace(/\u00a0/g, ' ').trim()
+    })
+    .filter(Boolean)
+    .join('\n')
 }
 
 const blockContent = (element: HTMLElement): string => {
@@ -100,13 +157,39 @@ const blockContent = (element: HTMLElement): string => {
   if (tagName === 'img') {
     return (element as HTMLImageElement).getAttribute('src') || ''
   }
+  if (isVisualObject(element)) {
+    return serializeVisualHtml(element)
+  }
   if (tagName === 'ul' || tagName === 'ol') {
     return Array.from(element.children)
       .filter((child) => child.tagName.toLowerCase() === 'li')
-      .map((li) => (li as HTMLElement).innerText.replace(/\u00a0/g, ' ').replace(/\r\n/g, '\n'))
+      .map((li) => normalizeText((li as HTMLElement).innerText))
       .join('\n')
   }
-  return element.innerText.replace(/\u00a0/g, ' ').replace(/\r\n/g, '\n').replace(/^\n+|\n+$/g, '')
+  if (isSlideTextShape(element)) {
+    return slideShapeContent(element)
+  }
+  return normalizeText(element.innerText)
+}
+
+const styleSource = (element: HTMLElement) =>
+  (element.querySelector('.slide-text-runs span, .slide-text-p span') as HTMLElement | null) ??
+  element
+
+const shouldSkipElement = (element: HTMLElement) => {
+  const tagName = element.tagName.toLowerCase()
+  return (
+    tagName === 'script' ||
+    tagName === 'style' ||
+    tagName === 'br' ||
+    tagName === 'hr' ||
+    tagName === 'button' ||
+    tagName === 'nav' ||
+    element.classList.contains('presentation-header') ||
+    element.classList.contains('navigation') ||
+    element.classList.contains('slide-counter') ||
+    element.classList.contains('fallback-content')
+  )
 }
 
 const collectContentElements = (root: HTMLElement): HTMLElement[] => {
@@ -114,12 +197,22 @@ const collectContentElements = (root: HTMLElement): HTMLElement[] => {
 
   const walk = (element: HTMLElement) => {
     const tagName = element.tagName.toLowerCase()
-    if (tagName === 'script' || tagName === 'style' || tagName === 'br' || tagName === 'hr') {
+    if (shouldSkipElement(element)) {
       return
     }
 
     const computed = window.getComputedStyle(element)
     if (computed.display === 'none' || computed.visibility === 'hidden') {
+      return
+    }
+
+    if (isSlideTextShape(element)) {
+      leaves.push(element)
+      return
+    }
+
+    if (isVisualObject(element)) {
+      leaves.push(element)
       return
     }
 
@@ -199,24 +292,39 @@ export const measureHtmlBlocks = async (
   try {
     await waitForLayout(container)
     const origin = container.getBoundingClientRect()
+    const elements = collectContentElements(container)
+    const hasBackgroundLayer = elements.some(
+      (element) =>
+        element.classList.contains('imported-slide-bg') ||
+        element.getAttribute('data-slide-background') === 'true'
+    )
 
-    return collectContentElements(container)
+    const blocks: MeasuredBlock[] = elements
       .map((element) => {
         const tagName = element.tagName.toLowerCase()
         const rect = element.getBoundingClientRect()
-        const styles = getComputedStyles(element)
-        const kind = blockKind(tagName)
+        const styles = getComputedStyles(styleSource(element))
+        const alignNode =
+          (element.querySelector('.slide-text-p') as HTMLElement | null) ?? styleSource(element)
+        styles.align = parseAlign(window.getComputedStyle(alignNode).textAlign)
+        const kind = blockKind(element)
         const content = blockContent(element)
         const computed = window.getComputedStyle(element)
         const paddingLeft = parseFloat(computed.paddingLeft) || 0
         const itemCount = kind === 'list' ? content.split('\n').filter(Boolean).length : 0
         const minListHeight =
           kind === 'list' ? itemCount * ((styles.fontSize || 14) * (96 / 72) * 1.25) : 0
-        const image = kind === 'image' ? (element as HTMLImageElement) : null
+        const image = kind === 'image' && tagName === 'img' ? (element as HTMLImageElement) : null
         const aspectRatio =
           image && image.naturalWidth > 0 && image.naturalHeight > 0
             ? image.naturalWidth / image.naturalHeight
             : undefined
+        const cover = element.getAttribute('data-slide-background') === 'true'
+        const isModel3d =
+          tagName === 'model-viewer' || element.classList.contains('slide-3d-model')
+        const isBackground = cover || element.classList.contains('imported-slide-bg')
+        const preserveBox =
+          cover || isSlideTextShape(element) || isModel3d || kind === 'html'
 
         return {
           kind,
@@ -231,9 +339,46 @@ export const measureHtmlBlocks = async (
             kind === 'list' ? Math.max(12, Math.round(paddingLeft * 0.75) || 14) : undefined,
           bulletStyle: kind === 'list' ? detectBulletStyle(element) : undefined,
           aspectRatio,
+          cover,
+          preserveBox,
+          isModel3d,
+          isBackground,
         } satisfies MeasuredBlock
       })
-      .filter((block) => block.content && block.width >= 1 && block.height >= 1)
+      .filter((block) => {
+        if (block.width < 1 || block.height < 1) return false
+        if (block.kind === 'html' || block.isBackground) return true
+        return Boolean(block.content)
+      })
+
+    const root =
+      (container.querySelector('.imported-slide, .slide[data-slide], .slide') as HTMLElement | null) ??
+      (container.firstElementChild as HTMLElement | null)
+    if (root) {
+      const computed = window.getComputedStyle(root)
+      const image = computed.backgroundImage
+      const needsGradient = Boolean(image && image !== 'none' && /gradient\(/i.test(image))
+      const needsFill = !hasBackgroundLayer && Boolean(image && image !== 'none')
+      if (needsGradient || needsFill) {
+        blocks.unshift({
+          kind: 'html',
+          content: `<div class="imported-slide-bg" style="background-image:${image};background-size:${computed.backgroundSize};background-repeat:${computed.backgroundRepeat};background-position:${computed.backgroundPosition}"></div>`,
+          x: 0,
+          y: 0,
+          width: origin.width,
+          height: origin.height,
+          styles: {},
+          preserveBox: true,
+          isBackground: true,
+        })
+      }
+    }
+
+    return blocks.sort((a, b) => {
+      const rank = (block: MeasuredBlock) =>
+        block.isBackground || block.cover ? 0 : block.kind === 'html' || block.kind === 'image' ? 1 : 2
+      return rank(a) - rank(b)
+    })
   } finally {
     document.body.removeChild(container)
   }
@@ -326,9 +471,29 @@ const paintBlocksOnSlide = async (
   }
 ) => {
   pptxSlide.background = { color: parseColor(options.background) }
+
+  if (isImportedSlideHtml(html)) {
+    const { width, height } = slideSizePx(options.widthIn, options.heightIn)
+    const dataUrl = await snapshotHtmlSlide(html, width, height, {
+      hideSelectors: SNAPSHOT_HIDE_3D,
+    })
+    pptxSlide.addImage({
+      data: dataUrl,
+      x: 0,
+      y: 0,
+      w: options.widthIn,
+      h: options.heightIn,
+    })
+    return
+  }
+
   const blocks = await measureHtmlBlocks(html, options.widthIn, options.heightIn)
 
   for (const block of blocks) {
+    if (block.isModel3d || block.kind === 'html') {
+      continue
+    }
+
     if (block.kind === 'image') {
       if (!options.embedImages) {
         continue
@@ -351,14 +516,16 @@ const paintBlocksOnSlide = async (
         }
       }
 
-      const fitted = containRect(
-        block.x,
-        block.y,
-        block.width,
-        block.height,
-        natural.width,
-        natural.height
-      )
+      const fitted = block.cover
+        ? { x: block.x, y: block.y, width: block.width, height: block.height }
+        : containRect(
+            block.x,
+            block.y,
+            block.width,
+            block.height,
+            natural.width,
+            natural.height
+          )
 
       if (dataUrl.startsWith('data:image/svg+xml')) {
         try {
@@ -409,7 +576,13 @@ export const htmlToPptx = async (html: string | string[], options: HtmlToPptxOpt
   const background = options.background ?? '#ffffff'
   const baseUrl = options.baseUrl ?? window.location.href
   const embedImages = options.embedImages ?? true
-  const pages = (Array.isArray(html) ? html : [html]).filter((page) => page != null)
+  const pages = (Array.isArray(html) ? html : [html])
+    .filter((page) => page != null)
+    .flatMap((page) => splitImportedHtml(page).map((item) => item.html))
+  const modelsBySlide: ExportableSlideModel[][] = []
+  for (const page of pages) {
+    modelsBySlide.push(await prepareExportableModels(page))
+  }
 
   const pptx = new PptxGenJS()
   const layoutName = `CUSTOM_${widthIn}x${heightIn}`
@@ -426,5 +599,11 @@ export const htmlToPptx = async (html: string | string[], options: HtmlToPptxOpt
     })
   }
 
-  return (await pptx.write({ outputType: 'blob' })) as Blob
+  const blob = (await pptx.write({ outputType: 'blob' })) as Blob
+  try {
+    return await embedModelsInPptx(blob, modelsBySlide)
+  } catch (error) {
+    console.warn('Failed to embed 3D models, returning snapshot PPTX:', error)
+    return blob
+  }
 }

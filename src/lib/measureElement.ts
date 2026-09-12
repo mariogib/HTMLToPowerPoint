@@ -18,7 +18,7 @@ export const defaultColor = (type: CanvasElement['type']) =>
   type === 'text' ? '#3e4c66' : '#1f2a44'
 
 export const measureElementSize = (element: CanvasElement) => {
-  if (element.type === 'image') {
+  if (element.type === 'image' || element.type === 'html') {
     return { width: element.width, height: element.height }
   }
 
@@ -66,7 +66,7 @@ export const measureElementSize = (element: CanvasElement) => {
 }
 
 export const withAutoSize = (element: CanvasElement): CanvasElement => {
-  if (element.type === 'image' || element.autoSize === false) {
+  if (element.type === 'image' || element.type === 'html' || element.autoSize === false) {
     return element
   }
   const size = measureElementSize(element)
