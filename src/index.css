@@ -97,6 +97,28 @@ body {
   background: #4f46e5;
 }
 
+.site-intro {
+  margin: 0;
+  padding: 0.6rem 1rem 0.65rem;
+  background: #e0e7ff;
+  border-bottom: 1px solid #a5b4fc;
+  color: #1e293b;
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.site-intro strong {
+  color: #312e81;
+}
+
+.site-intro code {
+  font-size: 0.8em;
+  padding: 0.05em 0.3em;
+  border-radius: 4px;
+  background: rgba(79, 70, 229, 0.1);
+  color: #3730a3;
+}
+
 .site-banner {
   margin: 0;
   padding: 0.55rem 1rem 0.65rem;
@@ -121,6 +143,7 @@ body {
     width: 100%;
   }
 
+  .site-intro,
   .site-banner {
     padding: 0.5rem 0.75rem 0.6rem;
   }

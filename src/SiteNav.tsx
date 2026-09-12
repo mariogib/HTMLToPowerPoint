@@ -38,6 +38,12 @@ export const SiteNav = () => {
           </a>
         </nav>
       </div>
+      <p className="site-intro">
+        <strong>What this is.</strong> SlideBridge is a browser tool for moving slide decks
+        between HTML and PowerPoint. Build or load HTML slides and export a <code>.pptx</code>,
+        or convert a PowerPoint file into standalone HTML you can preview and download. Nothing
+        is uploaded; conversion runs locally in this tab.
+      </p>
       <p className="site-banner" role="note">
         <strong>Prototype limitations.</strong> SlideBridge converts HTML and PowerPoint in
         the browser. It is not Microsoft PowerPoint. Charts, tables, animations, transitions,
